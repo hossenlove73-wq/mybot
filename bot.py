@@ -2,6 +2,7 @@ import logging
 import datetime
 import os
 import sys
+import asyncio
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -9,7 +10,6 @@ from telegram.ext import (
     CallbackQueryHandler, ConversationHandler, filters, ContextTypes,
 )
 
-# Add project root to path so imports work
 sys.path.insert(0, os.path.dirname(__file__))
 
 from config import BOT_TOKEN
@@ -23,11 +23,9 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-# Conversation states
 SKEL, USAGE, AREA, FLOORS, CONFIRM = range(5)
 
 
-# ── /start ────────────────────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     kb = [[
         InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
@@ -48,13 +46,11 @@ async def cb_lang(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await q.message.reply_text(t("menu", lang), parse_mode="Markdown")
 
 
-# ── /help ─────────────────────────────────────────────────────────────────────
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update.effective_user.id)
     await update.message.reply_text(t("help", lang), parse_mode="Markdown")
 
 
-# ── /estimate conversation ────────────────────────────────────────────────────
 async def cmd_estimate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update.effective_user.id)
     kb = [
@@ -124,6 +120,7 @@ async def msg_floors(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     area  = ctx.user_data["area"]
     res   = calculate(area, floors, skel, usage)
     ctx.user_data["result"] = res
+    ctx.user_data["floors"] = floors
 
     skel_labels  = {"RC": "بتن مسلح (RC)", "STEEL": "اسکلت فلزی", "LBM": "دیوار باربر"}
     usage_labels = {"RESIDENTIAL": "مسکونی", "COMMERCIAL": "تجاری", "OFFICE": "اداری"}
@@ -170,7 +167,7 @@ async def cb_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "skeleton":   ctx.user_data["skel"],
             "usage":      ctx.user_data["usage"],
             "floor_area": ctx.user_data["area"],
-            "floors":     ctx.user_data.get("result", {}).get("total_area", 0) // max(ctx.user_data["area"], 1),
+            "floors":     ctx.user_data["floors"],
             "result":     ctx.user_data["result"],
         }
         save_record(q.from_user.id, record)
@@ -187,7 +184,6 @@ async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# ── /history ──────────────────────────────────────────────────────────────────
 async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid  = update.effective_user.id
     lang = get_lang(uid)
@@ -212,7 +208,6 @@ async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
-# ── /report ───────────────────────────────────────────────────────────────────
 async def cmd_report(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid  = update.effective_user.id
     lang = get_lang(uid)
@@ -234,8 +229,7 @@ async def cmd_report(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ خطا: {e}")
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-def main():
+async def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     conv = ConversationHandler(
@@ -258,8 +252,8 @@ def main():
     app.add_handler(conv)
 
     print("✅ ربات در حال اجراست...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
